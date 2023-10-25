@@ -1,51 +1,70 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import streamlit as st
-from streamlit.logger import get_logger
+import pandas as pd
+import plotly.express as px
+import datetime
+import numpy as np
+from pyecharts.charts import Pie
+from pyecharts import options as opts
 
-LOGGER = get_logger(__name__)
+# Judul aplikasi
+st.title('Data Covid Pada Tahun 2020')
 
+# Baca data dari file CSV
+data = pd.read_csv("data_infeksi_covid19_indonesia.csv")
 
-def run():
-    st.set_page_config(
-        page_title="Hello",
-        page_icon="👋",
-    )
+# Konversi kolom "tanggal" ke tipe data datetime jika belum
+data['tanggal'] = pd.to_datetime(data['tanggal'])
 
-    st.write("# Welcome to Streamlit! 👋")
+fig_size = (800, 600)
 
-    st.sidebar.success("Select a demo above.")
+# Menampilkan data awal
+st.write("Tabel Data:")
+st.write(data)
 
-    st.markdown(
-        """
-        Streamlit is an open-source app framework built specifically for
-        Machine Learning and Data Science projects.
-        **👈 Select a demo from the sidebar** to see some examples
-        of what Streamlit can do!
-        ### Want to learn more?
-        - Check out [streamlit.io](https://streamlit.io)
-        - Jump into our [documentation](https://docs.streamlit.io)
-        - Ask a question in our [community
-          forums](https://discuss.streamlit.io)
-        ### See more complex demos
-        - Use a neural net to [analyze the Udacity Self-driving Car Image
-          Dataset](https://github.com/streamlit/demo-self-driving)
-        - Explore a [New York City rideshare dataset](https://github.com/streamlit/demo-uber-nyc-pickups)
-    """
-    )
+# Formulir tanggal awal
+tanggal_awal = st.date_input("Pilih tanggal batas awal", datetime.date(2020, 2, 18))
+tanggal_awal = datetime.datetime.combine(tanggal_awal, datetime.datetime.min.time())
 
+# Formulir tanggal akhir
+tanggal_akhir = st.date_input("Pilih tanggal batas akhir", datetime.date(2020, 6, 1))
+tanggal_akhir = datetime.datetime.combine(tanggal_akhir, datetime.datetime.min.time())
 
-if __name__ == "__main__":
-    run()
+# Membuat subset data berdasarkan tanggal yang dipilih
+data_subset = data[(data["tanggal"] >= tanggal_awal) & (data["tanggal"] <= tanggal_akhir)]
+
+# Pilihan kolom yang akan digunakan untuk membuat grafik
+kolom_pilihan = st.selectbox("Pilih kolom untuk membuat grafik", ["konfirmasi", "sembuh", "meninggal", "negatif", "proses_periksa", "kasus_perawatan"])
+
+# Membuat grafik berdasarkan kolom yang dipilih
+fig = px.line(data_subset, x="tanggal", y=kolom_pilihan, title=f"Grafik {kolom_pilihan} antara {tanggal_awal.date()} dan {tanggal_akhir.date()}") 
+st.plotly_chart(fig)
+
+# Mengelompokkan data berdasarkan bulan dan menghitung total "kolom yang dipilih pada selectbox" per bulan
+data_subset['bulan'] = data_subset['tanggal'].dt.strftime('%Y-%m')
+total_setiap_kolom = data_subset.groupby('bulan')[kolom_pilihan].sum()
+
+# Membuat chart batang dengan bulan-bulan yang diurutkan
+total_setiap_kolom = total_setiap_kolom.reset_index()
+total_setiap_kolom['bulan'] = pd.to_datetime(total_setiap_kolom['bulan'])
+total_setiap_kolom = total_setiap_kolom.sort_values(by='bulan')
+
+fig_setiap_kolom = px.bar(total_setiap_kolom, x='bulan', y=kolom_pilihan, labels={'y': f'Total {kolom_pilihan}'})
+fig_setiap_kolom.update_xaxes(
+    title_text='Bulan',
+    tickvals=total_setiap_kolom['bulan'],
+    ticktext=total_setiap_kolom['bulan'].dt.strftime('%b %Y')
+)
+fig_setiap_kolom.update_layout(title=f"Total {kolom_pilihan} per Bulan ({tanggal_awal.strftime('%B %Y')} - {tanggal_akhir.strftime('%B %Y')})")
+st.plotly_chart(fig_setiap_kolom)
+
+# Pie Chart
+st.markdown('**Pie Chart**')
+# Misalnya, di sini kita mengambil total dari setiap kolom yang Anda pilih
+total_kolom = data_subset[["konfirmasi", "sembuh", "meninggal", "negatif"]].sum()
+# Mengonversi total menjadi DataFrame
+total_kolom_df = total_kolom.reset_index()
+total_kolom_df.columns = ["Category", "Total"]
+# Gunakan total ini untuk membuat chart Pie
+fig_pie = px.pie(total_kolom_df, names="Category", values="Total")
+fig_pie.update_layout(height=fig_size[1], width=fig_size[0])
+st.plotly_chart(fig_pie)
